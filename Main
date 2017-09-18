@@ -6,12 +6,16 @@
 
 ; Define here the variables
 ;
-.def  temp  =r16
+.DEF  PNG = R17
+.DEF  TEMP   = R16  ; temporary working register
+.DEF  DELAYL = R20  ; 24 bit counter to generate long delays
+.DEF  DELAYM = R21  ;
+.DEF  DELAYH = R22  ;
 
 ; Define here Reset and interrupt vectors, if any
 ;
 reset:
-   rjmp start
+   rjmp forever
    reti      ; Addr $01
    reti      ; Addr $02
    reti      ; Addr $03
@@ -31,15 +35,130 @@ reset:
 
 ; Program starts here after Reset
 ;
-start:
-   nop       ; Initialize here ports, stack pointer,
-   nop       ; cleanup RAM, etc.
-   nop       ;
-   nop       ;
-
 forever:
-   nop
-   nop       ; Infinite loop.
-   nop       ; Define your main system
-   nop       ; behaviour here
-rjmp forever
+	 CLR   R0       ;low - set 00
+	 ClR   R1
+	 COM	 R1      ;compliment - set FF
+	 OUT	 DDRB, R1
+	 OUT	 DDRC, R1
+	 OUT	 PORTC, R0
+	 OUT	 PORTB, R0
+  ;now set stack pointer
+	 LDI	 TEMP,	low(RAMEND)
+	 OUT	 SPL, TEMP
+	 LDI TEMP, high(RAMEND)
+	 OUT  SPH, TEMP
+rjmp ping;
+
+;--------------- PING ------------------------------------------
+;
+; CONTACT THE PING
+;
+
+ping:
+rjmp p1;
+	
+p1:
+	LDI	TEMP, 15
+	OUT	PORTC, R1    ;send portc high
+	OUT	PORTB, R0   ;set LEDS off
+
+p2:
+	DEC	TEMP
+	CPSE	TEMP, R0
+	RJMP 	p2
+	
+p3:
+	OUT	PORTC, R0    ;set portc low
+	OUT	DDRC,	 R0    ;set PORTC to input
+	
+; wait for holdoff period = `750uS	
+p4:
+	LDI	TEMP, $12   ; ~750us delay (18*42.5uS)
+	CALL	SHORT_DELAY
+	clr 	TEMP	;reset TEMP $00
+	
+p5:
+	IN	TEMP, PINC          ;read ping
+	ORI	TEMP, $7F       ; only look at PC7  PC6-0 = 1
+	CPSE	TEMP, R1        ;skip if $FF
+	rjmp p5
+	CALL CALC
+	OUT	PORTB, TEMP     ;set LEDS on
+	
+p6:
+	IN	  TEMP, PINC ;read ping
+	ANDI TEMP, $80  ;only look at PC7  PC6-0 = 1
+	CPSE TEMP, R0   ;skip if $00
+	rjmp	p6
+
+   CALL CALC
+	;wait
+	LDI TEMP, $3E ;delay ~1s (62*16.2 ms)
+	call DELAY;
+   clr  TEMP; reset TEMP $00
+
+	CALL	DELAY
+	rjmp	forever
+	
+;---------------Calculator - Convert to decimal------------------------------------------
+;
+;
+
+CALC:
+
+
+	
+;---------------SHORT DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about  255 * 2 cycles / clock MHz.
+;           about 42.5 us @ 12 MHz
+;
+SHORT_DELAY:
+  ;ret                       ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 250ms delay.
+
+          ; 42.5 us * whatevers in TEMP
+SD_0:
+   clr   DELAYM
+   dec   DELAYM              ; Start at 0xFF
+SD_1:
+              ;
+   dec   DELAYM              ;
+   brne  SD_1                 ; middle loop
+   dec   TEMP
+   brne  SD_0                 ;outer loop.
+
+   ret
+
+;--------------- DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about 255 * 255 * 3 cycles / clock MHz.
+;           about 16.2 ms @ 12 MHz
+;
+DELAY:
+  ;ret                       ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 250ms delay.
+
+     ;16.2ms * whatevers in TEMP
+D_0:
+   clr   DELAYM
+   dec   DELAYM              ; Start at 0xFF
+D_1:
+   clr   DELAYL
+   dec   DELAYL              ; Start at 0xFF
+D_2:
+   dec   DELAYL              ; inner loop 3 cycles.
+   brne  D_2                 ;
+   dec   DELAYM              ;
+   brne  D_1                 ; middle loop
+   dec   TEMP
+   brne  D_0                 ;outer loop.
+
+   ret
