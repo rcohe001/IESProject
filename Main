@@ -2,40 +2,54 @@
 ; BASIC .ASM template file for AVR
 ; ******************************************************
 
-.include "C:\VMLAB\include\m32def.inc"
+.include "C:\VMLAB\include\M32DEF.INC"
 
 ; Define here the variables
 ;
-.DEF  PNG = R17
+.DEF  TIME   = R18
 .DEF  TEMP   = R16  ; temporary working register
+.DEF  PNG 	 = R17	  ;PING array counter
 .DEF  DELAYL = R20  ; 24 bit counter to generate long delays
 .DEF  DELAYM = R21  ;
 .DEF  DELAYH = R22  ;
-
+.equ	rate	 =	1
 ; Define here Reset and interrupt vectors, if any
 ;
 reset:
-   rjmp forever
-   reti      ; Addr $01
-   reti      ; Addr $02
-   reti      ; Addr $03
-   reti      ; Addr $04
-   reti      ; Addr $05
-   reti      ; Addr $06        Use 'rjmp myVector'
-   reti      ; Addr $07        to define a interrupt vector
-   reti      ; Addr $08
-   reti      ; Addr $09
-   reti      ; Addr $0A
-   reti      ; Addr $0B        This is just an example
-   reti      ; Addr $0C        Not all MCUs have the same
-   reti      ; Addr $0D        number of interrupt vectors
-   reti      ; Addr $0E
-   reti      ; Addr $0F
-   reti      ; Addr $10
 
+ jmp START ; Reset - start of user code
+ jmp EXT_INT0 ; IRQ0 Handler
+ jmp EXT_INT1 ; IRQ1 Handler
+ jmp EXT_INT2 ; IRQ2 Handler
+ jmp TIM2_COMP ;Timer2 Compare Handler
+ jmp TIM2_OVF ; Timer2 Overflow Handler
+ jmp TIM1_CAPT ; Timer1 Capture Handler
+ jmp TIM1_COMPA ; Timer1 CompareA Handler
+ jmp TIM1_COMPB ; Timer1 CompareB Handler
+ jmp TIM1_OVF ; Timer1 Overflow Handler
+ jmp TIM0_COMP ; Timer0 Compare Handler
+ jmp TIM0_OVF ; Timer0 Overflow Handler
+ jmp SPI_STC ; SPI Transfer Complete Handler
+ jmp USART_RXC ; USART RX Complete Handler
+ jmp USART_UDRE ; UDR Empty Handler
+ jmp USART_TXC ; USART TX Complete Handler
+ jmp ADC ; ADC Conversion Complete
+ jmp EE_RDY ; EEPROM Ready Handler
+ jmp ANA_COMP ; Analog Comparator Handler
+ jmp TWI ; Two-wire Serial Interface
+ jmp SPM_RDY ; Store Program Memory Ready
 ; Program starts here after Reset
 ;
-forever:
+
+START:                ;setting stack pointer
+	 LDI	 TEMP,	low(RAMEND)
+	 OUT	 SPL, TEMP
+	 LDI TEMP, high(RAMEND)
+	 OUT  SPH, TEMP
+	 CLR 	PNG
+	 sei	;enable global interupts
+	
+FOREVER:
 	 CLR   R0       ;low - set 00
 	 ClR   R1
 	 COM	 R1      ;compliment - set FF
@@ -43,11 +57,7 @@ forever:
 	 OUT	 DDRC, R1
 	 OUT	 PORTC, R0
 	 OUT	 PORTB, R0
-  ;now set stack pointer
-	 LDI	 TEMP,	low(RAMEND)
-	 OUT	 SPL, TEMP
-	 LDI TEMP, high(RAMEND)
-	 OUT  SPH, TEMP
+	
 rjmp ping;
 
 ;--------------- PING ------------------------------------------
@@ -77,28 +87,31 @@ p4:
 	LDI	TEMP, $12   ; ~750us delay (18*42.5uS)
 	CALL	SHORT_DELAY
 	clr 	TEMP	;reset TEMP $00
+;	CALL        ;call timer
 	
 p5:
+	CALL EXT_INT1
 	IN	TEMP, PINC          ;read ping
-	ORI	TEMP, $7F       ; only look at PC7  PC6-0 = 1
+   ORI	TEMP, $7F       ; only look at PC7  PC6-0 = 1
 	CPSE	TEMP, R1        ;skip if $FF
+
 	rjmp p5
-	CALL CALC
-	OUT	PORTB, TEMP     ;set LEDS on
+
+
+	
 	
 p6:
 	IN	  TEMP, PINC ;read ping
+
 	ANDI TEMP, $80  ;only look at PC7  PC6-0 = 1
 	CPSE TEMP, R0   ;skip if $00
 	rjmp	p6
 
    CALL CALC
 	;wait
-	LDI TEMP, $3E ;delay ~1s (62*16.2 ms)
+	LDI TEMP, $20 ;delay ~1s (62*16.2 ms)
 	call DELAY;
-   clr  TEMP; reset TEMP $00
 
-	CALL	DELAY
 	rjmp	forever
 	
 ;---------------Calculator - Convert to decimal------------------------------------------
@@ -106,8 +119,9 @@ p6:
 ;
 
 CALC:
-
-
+;LDI R17, R18
+OUT PORTB, PNG
+CLR PNG
 	
 ;---------------SHORT DELAY ------------------------------------------
 ;
@@ -162,3 +176,54 @@ D_2:
    brne  D_0                 ;outer loop.
 
    ret
+
+EXT_INT1:
+
+ ldi TIME, (1<<CS01);|(1<<CS00)  ;division value 1024 or 256
+ out TCCR0, TIME ; Timer clock = system clock / 1024
+
+ ldi TIME, 1<<TOV0
+ out TIFR, TIME ; Clear TOV0/ Clear pending interrupts
+ ldi TIME, 1<<TOIE0
+ out TIMSK, TIME ; Enable Timer/Counter0 Overflow Interrupt
+
+ ret
+
+ TIM0_OVF:
+ push TIME
+ in TIME,SREG
+ push TIME
+
+ pop TIME
+ out SREG,TIME
+ pop TIME
+ INC PNG;counting times timer overflow is called
+ reti
+
+ TIM1_OVF:
+
+ TIME2_OVF
+
+ EXT_INT0: reti ; IRQ0 Handler
+; EXT_INT1: reti ; IRQ1 Handler
+ EXT_INT2: reti ; IRQ2 Handler
+ TIM2_COMP: reti ;Timer2 Compare Handler
+ TIM2_OVF: reti ; Timer2 Overflow Handler
+ TIM1_CAPT: reti ; Timer1 Capture Handler
+ TIM1_COMPA: reti ; Timer1 CompareA Handler
+ TIM1_COMPB: reti ; Timer1 CompareB Handler
+ TIM1_OVF: reti ; Timer1 Overflow Handler
+ TIM0_COMP: reti ; Timer0 Compare Handler
+; TIM0_OVF: reti ; Timer0 Overflow Handler
+ SPI_STC: reti ; SPI Transfer Complete Handler
+ USART_RXC: reti ; USART RX Complete Handler
+ USART_UDRE: reti ; UDR Empty Handler
+ USART_TXC: reti ; USART TX Complete Handler
+ ADC: reti ; ADC Conversion Complete
+ EE_RDY: reti ; EEPROM Ready Handler
+ ANA_COMP: reti ; Analog Comparator Handler
+ TWI: reti ; Two-wire Serial Interface
+ SPM_RDY: reti ; Store Program Memory Ready
+
+
+
