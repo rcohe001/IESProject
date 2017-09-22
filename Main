@@ -6,9 +6,11 @@
 
 ; Define here the variables
 ;
-.DEF  TIME   = R18
+
 .DEF  TEMP   = R16  ; temporary working register
-.DEF  PNG 	 = R17	  ;PING array counter
+.DEF  PNG 	 = R17  ;PING array counter
+.DEF	TIME	 = R18  ;Timer TEMP
+
 .DEF  DELAYL = R20  ; 24 bit counter to generate long delays
 .DEF  DELAYM = R21  ;
 .DEF  DELAYH = R22  ;
@@ -25,7 +27,7 @@ reset:
  jmp TIM2_OVF ; Timer2 Overflow Handler
  jmp TIM1_CAPT ; Timer1 Capture Handler
  jmp TIM1_COMPA ; Timer1 CompareA Handler
- jmp TIM1_COMPB ; Timer1 CompareB Handler
+ jmp TIM1_COMPB;TIM1_COMPB ; Timer1 CompareB Handler
  jmp TIM1_OVF ; Timer1 Overflow Handler
  jmp TIM0_COMP ; Timer0 Compare Handler
  jmp TIM0_OVF ; Timer0 Overflow Handler
@@ -90,7 +92,8 @@ p4:
 ;	CALL        ;call timer
 	
 p5:
-	CALL EXT_INT1
+
+	CALL EXT_INT0  ;start timer
 	IN	TEMP, PINC          ;read ping
    ORI	TEMP, $7F       ; only look at PC7  PC6-0 = 1
 	CPSE	TEMP, R1        ;skip if $FF
@@ -120,7 +123,7 @@ p6:
 
 CALC:
 ;LDI R17, R18
-OUT PORTB, PNG
+OUT PORTB, PNG  ;output cm array
 CLR PNG
 	
 ;---------------SHORT DELAY ------------------------------------------
@@ -177,20 +180,39 @@ D_2:
 
    ret
 
-EXT_INT1:
+EXT_INT0: ;counting to 12
 
- ldi TIME, (1<<CS01);|(1<<CS00)  ;division value 1024 or 256
- out TCCR0, TIME ; Timer clock = system clock / 1024
+ ldi TIME, (1<<CS00)    ;division value by 1 (can change)
+ out TCCR0, TIME ; Timer clock = system clock / 1
 
- ldi TIME, 1<<TOV0
- out TIFR, TIME ; Clear TOV0/ Clear pending interrupts
- ldi TIME, 1<<TOIE0
- out TIMSK, TIME ; Enable Timer/Counter0 Overflow Interrupt
+ ldi TIME, 1<<OCF0
+ out TIFR, TIME ; Clear OCF0/ Clear pending interrupts
+ ldi TIME, 1<<OCIE0
+ out TIMSK, TIME ; Enable Timer/Counter0 Output compare Interrupt
+ LDI TIME, $0C  ;appling catch variable for 12
+ OUT OCR0, TIME ;setting catch variable
 
  ret
 
- TIM0_OVF:
- push TIME
+TIM0_COMP:
+
+CALL EXT_INT2 ;calls second counter
+ret
+
+EXT_INT2:  ;counting to 29
+	ldi TIME, (1<<CS00)    ;division value by 1 (can change)
+	out TCCR2, TIME ; Timer clock = system clock / 1
+
+	ldi TIME, 1<<OCF2
+	out TIFR, TIME ; Clear OCF2/ Clear pending interrupts
+	ldi TIME, 1<<OCIE2
+	out TIMSK, TIME ; Enable Timer/Counter2 Output compare Interrupt
+	LDI TIME, $1D  ;appling catch variable for 12
+	OUT OCR0, TIME ;setting catch variable
+
+ret
+
+TIM2_COMP:    ;second compare interupt
  in TIME,SREG
  push TIME
 
@@ -198,23 +220,20 @@ EXT_INT1:
  out SREG,TIME
  pop TIME
  INC PNG;counting times timer overflow is called
- reti
 
- TIM1_OVF:
+ret
 
- TIME2_OVF
-
- EXT_INT0: reti ; IRQ0 Handler
-; EXT_INT1: reti ; IRQ1 Handler
- EXT_INT2: reti ; IRQ2 Handler
- TIM2_COMP: reti ;Timer2 Compare Handler
+; EXT_INT0: reti ; IRQ0 Handler
+ EXT_INT1: reti ; IRQ1 Handler
+; EXT_INT2: reti ; IRQ2 Handler
+ ;TIM2_COMP: reti ;Timer2 Compare Handler
  TIM2_OVF: reti ; Timer2 Overflow Handler
  TIM1_CAPT: reti ; Timer1 Capture Handler
  TIM1_COMPA: reti ; Timer1 CompareA Handler
  TIM1_COMPB: reti ; Timer1 CompareB Handler
  TIM1_OVF: reti ; Timer1 Overflow Handler
- TIM0_COMP: reti ; Timer0 Compare Handler
-; TIM0_OVF: reti ; Timer0 Overflow Handler
+; TIM0_COMP: reti ; Timer0 Compare Handler
+ TIM0_OVF: reti ; Timer0 Overflow Handler
  SPI_STC: reti ; SPI Transfer Complete Handler
  USART_RXC: reti ; USART RX Complete Handler
  USART_UDRE: reti ; UDR Empty Handler
