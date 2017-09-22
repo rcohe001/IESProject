@@ -1,0 +1,419 @@
+; ******************************************************
+; BASIC .ASM template file for AVR
+; ******************************************************
+
+.include "C:\EEET22~1\Tools\VMLab\include\m32def.inc"
+;--- register definitions for ATMEGA32.
+.DEF  ZERO   = R0;
+.DEF  ONE  = R1;
+.DEF  VAL  = R22;
+.DEF  UNITS  = R23;
+.DEF  TENS  = R24;
+.DEF  HUNDREDS  = R25;
+.DEF  TEMP   = R16  ; temporary working register
+.DEF  SER_REG = R17
+.DEF  SER_REG1 = R18
+.DEF  DELAYL = R19  ; 24 bit counter to generate long delays
+.DEF  DELAYM = R20  ;
+.DEF  DELAYH = R21  ;
+.EQU  B192 = 205;
+
+; Define here Reset and interrupt vectors, if any
+;
+reset:
+   rjmp start
+   reti      ; Addr $01
+   reti      ; Addr $02
+   reti      ; Addr $03
+   reti      ; Addr $04
+   reti      ; Addr $05
+   reti      ; Addr $06        Use 'rjmp myVector'
+   reti      ; Addr $07        to define a interrupt vector
+   reti      ; Addr $08
+   reti      ; Addr $09
+   reti      ; Addr $0A
+   reti      ; Addr $0B        This is just an example
+   reti      ; Addr $0C        Not all MCUs have the same
+   reti      ; Addr $0D        number of interrupt vectors
+   reti      ; Addr $0E
+   reti      ; Addr $0F
+   reti      ; Addr $10
+
+; Program starts here after Reset
+;
+;========================================================================
+;  Basic Assembler using VMware
+;========================================================================
+;
+; ASSEMBLE & SIMULATE
+;~~~~~~~~~~~~~~~~~~~~~
+;  Follow the steps below to run the main.asm example in this directory.
+;
+;   * Start VMLab from the main menu at bottom left
+;     of the screen,  Electronics->VMLab->VMLab.
+;
+;   * In the VMLab menu select Project->Open Project.
+;     If not there already navigate to the source directory,  possibly-
+;         /home/user/projects/AAA_simple_ousb_projects/asm_in_vmlab/
+;     and select the file main.prj
+;
+;   * Use the View menu item to open at least the Code Notebook
+;     (the source code), the IO Port and Register windows.
+;
+;   * If running in simulation comment out the DELAY as shown
+;     in the DELAY: function.  For running on a real board
+;     re-instate the delay.
+;
+;   * Select the menu option Project->Build to assemble.
+;
+;   * Now start single stepping by hitting the F7 key.
+;     Note the current instruction in the Code Notebook,
+;     and the registers changing in the register window.
+;
+;   * See the read_me.txt for more help.
+;
+;------ initializations.
+
+start:                 ;constants in R0 & R1
+   clr	ZERO
+   clr   ONE
+   dec 	ONE				;init to $FF
+	ldi   TEMP,  low(RAMEND)   ; Init stack pointer
+   out   SPL,  Temp   ;
+   ldi	TEMP, high(RAMEND)
+   out	SPH, Temp
+   LDI	TEMP,$80
+   out   DDRC,  TEMP   ;
+   out   PORTC, TEMP   ; and set it high
+   out   DDRB,  ONE   ;
+   out   PORTB, ZERO   ; and set it high
+   out   DDRA,  ZERO   ;
+   ldi	Temp,	0x25
+   OUT	ADMUX, Temp
+   ldi	Temp, 0x87
+   OUT	ADCSR, Temp
+	ldi	Temp,  $12
+	ldi  	SER_REG, $0C
+   call 	serial_out             ;CLEAR
+   ldi  	DELAYH, 5    ; ~130mS delay
+   call 	L_DELAY       ; wait for LCD to startup
+
+Main:
+    ldi  DELAYH, 9    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+loop:
+;	ldi	XH, high(AD5<<1)    ; set the base pointer to the table
+ ;  ldi	XL, low(AD5<<1)
+
+;	OUT	PORTB, XL
+ ;  ldi	Temp, $12
+
+    ldi  SER_REG, $50
+    call serial_out             ;P
+    ldi  SER_REG, $56
+    call serial_out             ;V
+    ldi  SER_REG, $3A
+    call serial_out             ;:
+    ldi  SER_REG, $20	
+    call serial_out             ;<sp>
+
+	RCALL	GETVAL
+	 MOV  SER_REG, HUNDREDS
+    call serial_out             ;HUNDREDS
+    MOV  SER_REG, TENS
+    call serial_out             ;TENS
+    MOV  SER_REG, UNITS
+    call serial_out             ;UNITS
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+    ldi  SER_REG, $0D
+    call serial_out             ;return
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+    ldi  SER_REG, $53
+    call serial_out             ;S
+    ldi  SER_REG, $50
+    call serial_out             ;P
+    ldi  SER_REG, $3A
+    call serial_out             ;:
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+	 RCALL	GETSP
+	 MOV  SER_REG, HUNDREDS
+    call serial_out             ;HUNDREDS
+    MOV  SER_REG, TENS
+    call serial_out             ;TENS
+    MOV  SER_REG, UNITS
+    call serial_out             ;UNITS
+
+	 ldi  SER_REG, $0D
+    call serial_out             ;return
+
+	 ldi  SER_REG, $45
+    call serial_out             ;E
+    ldi  SER_REG, $52
+    call serial_out             ;R
+    ldi  SER_REG, $3A
+    call serial_out             ;:
+
+	 RCALL GETER
+	 MOV  SER_REG, HUNDREDS
+    call serial_out             ;HUNDREDS
+    MOV  SER_REG, TENS
+    call serial_out             ;TENS
+    MOV  SER_REG, UNITS
+    call serial_out             ;UNITS
+
+
+
+	 ldi  SER_REG, $80			
+    call serial_out             ;position 0,0
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+here:
+   rjmp LOOP   ;
+
+;----------------sends byte to port  on bit at a time --------------------
+; emulates rs232 serial output
+; assumes we're connected to PB7
+;serial_out:
+
+serial_out:
+   clr SER_REG1
+   out PORTC, Zero  ; start bit
+   call B_DELAY
+
+   ror SER_REG      ; rotate B0 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1  ; output B0
+   call B_DELAY
+   ror SER_REG      ; rotate B1 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1   ;output B1
+   call B_DELAY
+   ror SER_REG      ; rotate B2 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1  ;output B2
+   call B_DELAY
+   ror SER_REG      ; rotate B3 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1   ;output B3
+   call B_DELAY
+   ror SER_REG      ; rotate B4 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1    ;output B4
+   call B_DELAY
+   ror SER_REG      ; rotate B5 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1    ;output B5
+   call B_DELAY
+   ror SER_REG      ; rotate B6 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1   ;B6
+   call B_DELAY
+   ror SER_REG        ; rotate B7 into carry
+   ror SER_REG1       ; rotate carry into B7
+   out PORTC, SER_REG1    ;output B7
+   call B_DELAY
+;  out PORTB, zero    ; send zero as the parity bit
+ ;  call B_DELAY
+   out	PORTC, one
+   call B_DELAY
+   call B_DELAY      ; two stop bits
+   ret
+
+;--------------- Baud-rate DELAY ------------------------------------------
+;
+; PURPOSE: 8 bit counter for very short delays.
+;
+; DETAILS:  total delay = 6+ 3x(Delay-1) x 83.3uS @ 12 MHz
+;  Enters with delay value in DELAYL
+; e.g 207 -> 5.2uS ->  19,230 baud
+B_DELAY:
+; 	ret                        ; uncomment this line for simulation to
+   LDI   DELAYL, B192
+BD_0:
+   dec   DELAYL              ; Start at 0xFF
+   brne  BD_0                 ; inner loop 3 cycles =
+   LDI   DELAYL, B192
+BD_1:
+   dec   DELAYL              ; Start at 0xFF
+   brne  BD_1                 ; inner loop 3 cycles =
+   ret                       ; 4 cycles
+;--------------- Short DELAY ------------------------------------------
+;
+; PURPOSE: 8 bit counter for very short delays.
+;
+; DETAILS:  total delay = 6+ 3x(Delay-1) x 83.3uS @ 12 MHz
+;  Enters with delay value in DELAYL
+; e.g 207 -> 5.2uS ->  19,230 baud
+S_DELAY:
+; ret                        ; uncomment this line for simulation to
+SD_0:
+   dec   DELAYL              ; Start at 0xFF
+   brne  SD_0                 ; inner loop 3 cycles =
+   ret                       ; 4 cycles
+
+;--------------- Long DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about 256 * 256 * 3 cycles / clock MHz.
+;           very approx 16.4 ms @ 12 MHz
+;
+L_DELAY:
+ ret                        ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 260ms delay.
+   clr   DELAYM
+   clr   DELAYL
+D_0:
+   dec   DELAYL              ; Start at 0xFF
+   brne  D_0                 ; inner loop 3 cycles.
+   dec   DELAYM              ;
+   brne  D_0                 ; middle loop
+   dec   DELAYH
+   brne  D_0                 ;outer loop.
+
+   ret
+
+;--------------- Long DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about 256 * 256 * 3 cycles / clock MHz.
+;           very approx 16.4 ms @ 12 MHz
+;
+;
+DELAY_96:
+; ret                        ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 260ms delay.
+   clr   DELAYL
+   ldi   DELAYH, 5           ;about 9600 baud
+D_96:
+   dec   DELAYL              ; Start at 0xFF
+   brne  D_96                 ; inner loop 3 cycles.
+   dec   DELAYH
+   brne  D_0                 ;outer loop.
+
+   ret
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+GETSP:
+	SBI	ADCSR,	ADSC
+KPolling:	
+	SBIS	ADCSR,	ADIF
+	rjmp	KPolling
+	SBI	ADCSR,	ADIF
+	IN 	UNITS,	ADCH
+	CLR   ONE
+	INC	ONE
+	CLR	TENS
+	CLR	HUNDREDS
+	RJMP	LHUND
+GETVAL:
+	LDI	VAL, 128
+	MOV	UNITS,VAL
+	CLR   ONE
+	INC	ONE
+	CLR	TENS
+	CLR	HUNDREDS
+	RJMP	LHUND
+GETER:
+	LDI	UNITS, 128
+ 	IN		VAL, ADCH
+ 	CP	   UNITS, VAL
+	BRLO	NEG
+ 	SUB	UNITS,VAL
+ 	LDI	TEMP, 0X2B
+ 	MOV  	SER_REG, TEMP
+   call 	serial_out             ;SIGN
+   RJMP	POS
+NEG:
+	SUB	VAL,UNITS
+	MOV	UNITS, VAL
+ 	LDI	TEMP, 0X2D
+ 	MOV  	SER_REG, TEMP
+   call 	serial_out             ;SIGN
+POS:
+ 	CLR   ONE
+	INC	ONE
+	CLR	TENS
+	CLR	HUNDREDS
+ 	RJMP	LHUND
+LHUND:	
+	CPI	UNITS,100
+	BRLO	LTEN
+	SUBI	UNITS,100
+	ADD	HUNDREDS, ONE
+	RJMP	LHUND
+LTEN:
+	CPI	UNITS,10
+	BRLO	LUNIT
+	SUBI	UNITS, 10
+	ADD	TENS, ONE
+	RJMP	LTEN
+LUNIT:
+	clr   ONE
+   dec 	ONE				;init to $FF
+
+   ldi	 ZH, high(ACIITBL<<1)    ; set the base pointer to the table
+   ldi	 ZL, low(ACIITBL<<1)
+   clr	 VAL
+   DEC	 VAL
+   clr	 TEMP
+scanHun:					; R0=0 increment ZH if carry out of ZL
+   lpm	 temp, Z+
+   INC	 VAL
+	cp     VAL, hundreds
+	brne	 scanHun
+	mov	 hundreds, temp
+	ldi	 ZH, high(ACIITBL<<1)    ; set the base pointer to the table
+   ldi	 ZL, low(ACIITBL<<1)
+	clr	 VAL
+   DEC	 VAL
+scanTen:
+  	lpm	 temp, Z+
+  	INC	 VAL	   			; now pick up the table entry
+	cp     VAL, TENS
+	brne	 scanTen
+	mov	 TENS, temp
+	ldi	 ZH, high(ACIITBL<<1)    ; set the base pointer to the table
+   ldi	 ZL, low(ACIITBL<<1)
+	clr	 VAL
+   DEC	 VAL
+scanUnit:
+  	lpm	 temp, Z+
+  	INC	 VAL	   			; now pick up the table entry
+	cp     VAL, UNITS
+	brne	 scanUnit
+	mov	 UNITS, temp
+
+	RET	
+
+
+ACIITBL: ;0		1   2    3    4    5    6    7    8    9
+   .DB  $30, $31, $32, $33, $34, $35, $36, $37, $38, $39	
+
+	
+
+
+
+
+
+
+
+
+
+
+
