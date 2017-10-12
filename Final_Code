@@ -1,0 +1,788 @@
+; ******************************************************
+; BASIC .ASM template file for AVR
+; ******************************************************
+
+.include "C:\EEET22~1\Tools\VMLab\include\m32def.inc"
+
+; Define here the variables
+;
+;.DEF  TIME   = R18
+.DEF  ZERO   = R0;
+.DEF  ONE  = R1;
+.DEF  TEMP   = R16  ; temporary working register
+.DEF  SER_REG = R17
+.DEF  SER_REG1 = R18
+.DEF  DELAYL = R19  ; 24 bit counter to generate long delays
+.DEF  DELAYM = R20  ;
+.DEF  DELAYH = R21  ;
+.DEF  VAL  = R22;
+.DEF  UNITS  = R23;
+.DEF  TENS  = R24;
+.DEF  HUNDREDS  = R25;
+.equ	rate	 =	1
+
+.EQU  B192 = 205;
+; Define here Reset and interrupt vectors, if any
+;
+reset:
+
+ jmp START ; Reset - start of user code
+ ;jmp EXT_INT0 ; IRQ0 Handler
+ ;jmp EXT_INT1 ; IRQ1 Handler
+ ;jmp EXT_INT2 ; IRQ2 Handler
+ ;jmp TIM2_COMP ;Timer2 Compare Handler
+ ;jmp TIM2_OVF ; Timer2 Overflow Handler
+ ;jmp TIM1_CAPT ; Timer1 Capture Handler
+ ;jmp TIM1_COMPA ; Timer1 CompareA Handler
+ ;jmp TIM1_COMPB ; Timer1 CompareB Handler
+ ;jmp TIM1_OVF ; Timer1 Overflow Handler
+ ;jmp TIM0_COMP ; Timer0 Compare Handler
+ ;jmp TIM0_OVF ; Timer0 Overflow Handler
+ ;jmp SPI_STC ; SPI Transfer Complete Handler
+ ;jmp USART_RXC ; USART RX Complete Handler
+ ;jmp USART_UDRE ; UDR Empty Handler
+ ;jmp USART_TXC ; USART TX Complete Handler
+ ;jmp ADC ; ADC Conversion Complete
+ ;jmp EE_RDY ; EEPROM Ready Handler
+ ;jmp ANA_COMP ; Analog Comparator Handler
+ ;jmp TWI ; Two-wire Serial Interface
+ ;jmp SPM_RDY ; Store Program Memory Ready
+; Program starts here after Reset
+;
+
+START:                ;setting stack pointer
+	 LDI	 TEMP,	low(RAMEND)
+	 OUT	 SPL, TEMP
+	 LDI TEMP, high(RAMEND)
+	 OUT  SPH, TEMP
+	 CLR 	R17
+	 CLR 	R18
+	 sei	;enable global interupts
+	
+FOREVER:
+	 CLR   R0       ;low - set 00
+	 ClR   R1
+	 COM	 R1      ;compliment - set FF
+	 OUT	 DDRB, R1
+	 LDI	 TEMP, 0X01
+	 OUT	 DDRC, TEMP
+	 OUT	 PORTC, R0
+	 ;OUT	 PORTB, R0
+	
+rjmp ping;
+
+;--------------- PING ------------------------------------------
+;
+; CONTACT THE PING
+;
+
+ping:
+rjmp p1;
+	
+p1:
+	
+	OUT	PORTC, TEMP    ;send portc high
+	;OUT	PORTB, R0   ;set LEDS off
+   LDI	TEMP, 15
+p2:
+  	DEC	TEMP
+	CPSE	TEMP, R0
+	RJMP 	p2
+	
+p3:
+	OUT	PORTC, R0    ;set portc low
+	OUT	DDRC,	 R0    ;set PORTC to input
+	
+; wait for holdoff period = `750uS	
+p4:
+	LDI	TEMP, $12   ; ~750us delay (18*42.5uS)
+	CALL	SHORT_DELAY
+	clr 	TEMP	;reset TEMP $00
+	CLR	R24
+	
+p5:
+	INC	R24
+	IN	TEMP, PINC          ;read ping
+   ORI	TEMP, $FE       ; only look at PC7  PC6-0 = 1
+	CPI	R24, 0XFF        ;skip if $FF
+	BREQ	RESET
+	CPSE	TEMP, R1        ;skip if $FF
+	rjmp p5
+   CLR	R24	
+p6:
+	INC	R24
+	LDI	R23,	0X02
+	CP		R24, R23
+	BRSH uS
+RESUME:	
+	IN	  TEMP, PINC ;read ping
+	ANDI TEMP, 0x01  ;only look at PC7  PC6-0 = 1
+	CPSE TEMP, R0   ;skip if $00
+	rjmp	p6
+
+   CALL CALC
+	;wait
+	LDI TEMP, $20 ;delay ~1s (62*16.2 ms)
+	call DELAY;
+
+	rjmp	forever
+	
+;---------------Calculator - Convert to decimal------------------------------------------
+;
+;
+
+CALC:
+MOV VAL, R17
+;OUT PORTB, VAL
+CLR R17
+RJMP LCDstart
+	
+;---------------SHORT DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about  255 * 2 cycles / clock MHz.
+;           about 42.5 us @ 12 MHz
+;
+SHORT_DELAY:
+  ;ret                       ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 250ms delay.
+
+          ; 42.5 us * whatevers in TEMP
+SD_0:
+   clr   DELAYM
+   dec   DELAYM              ; Start at 0xFF
+SD_1:
+              ;
+   dec   DELAYM              ;
+   brne  SD_1                 ; middle loop
+   dec   TEMP
+   brne  SD_0                 ;outer loop.
+
+   ret
+
+;--------------- DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about 255 * 255 * 3 cycles / clock MHz.
+;           about 16.2 ms @ 12 MHz
+;
+DELAY:
+  ;ret                       ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 250ms delay.
+
+     ;16.2ms * whatevers in TEMP
+D_0:
+   clr   DELAYM
+   dec   DELAYM              ; Start at 0xFF
+D_1:
+   clr   DELAYL
+   dec   DELAYL              ; Start at 0xFF
+D_2:
+   dec   DELAYL              ; inner loop 3 cycles.
+   brne  D_2                 ;
+   dec   DELAYM              ;
+   brne  D_1                 ; middle loop
+   dec   TEMP
+   brne  D_0                 ;outer loop.
+
+   ret
+
+
+uS:
+	CLR 	R24
+	INC	R18
+	LDI	R23, 26
+	CPSE	R18, R23
+	RJMP RESUME
+	RCALL	CM
+	RJMP RESUME
+CM:
+	CLR	R18
+	INC	R17
+	RET
+
+LCDstart:                 ;constants in R0 & R1
+   clr	ZERO
+   clr   ONE
+   dec 	ONE				;init to $FF
+   LDI	TEMP,$80
+   out   DDRC,  TEMP   ;
+   out   PORTC, TEMP   ; and set it high
+  ; out   DDRB,  ONE   ;
+   out   DDRA,  ZERO   ;
+   ldi	Temp,	0x25
+   OUT	ADMUX, Temp
+   ldi	Temp, 0x87
+   OUT	ADCSR, Temp
+	ldi	Temp,  $12
+	ldi  	SER_REG, $0C
+   call 	serial_out             ;CLEAR
+   ldi  	DELAYH, 5    ; ~130mS delay
+   call 	L_DELAY       ; wait for LCD to startup
+
+Main:
+    ldi  DELAYH, 9    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+loop:
+;	ldi	XH, high(AD5<<1)    ; set the base pointer to the table
+ ;  ldi	XL, low(AD5<<1)
+
+;	OUT	PORTB, XL
+ ;  ldi	Temp, $12
+
+    ldi  SER_REG, $50
+    call serial_out             ;P
+    ldi  SER_REG, $56
+    call serial_out             ;V
+    ldi  SER_REG, $3A
+    call serial_out             ;:
+
+	RCALL	GETVAL
+	 MOV  SER_REG, HUNDREDS
+    call serial_out             ;HUNDREDS
+    MOV  SER_REG, TENS
+    call serial_out             ;TENS
+    MOV  SER_REG, UNITS
+    call serial_out             ;UNITS
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+    ldi  SER_REG, $0D
+    call serial_out             ;return
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+    ldi  SER_REG, $53
+    call serial_out             ;S
+    ldi  SER_REG, $50
+    call serial_out             ;P
+    ldi  SER_REG, $3A
+    call serial_out             ;:
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+	 RCALL	GETSP
+	 MOV  SER_REG, HUNDREDS
+    call serial_out             ;HUNDREDS
+    MOV  SER_REG, TENS
+    call serial_out             ;TENS
+    MOV  SER_REG, UNITS
+    call serial_out             ;UNITS
+
+	 ldi  SER_REG, $0D
+    call serial_out             ;return
+
+	 ldi  SER_REG, $45
+    call serial_out             ;E
+    ldi  SER_REG, $52
+    call serial_out             ;R
+    ldi  SER_REG, $3A
+    call serial_out             ;:
+
+	 RCALL GETER
+	 MOV  SER_REG, HUNDREDS
+    call serial_out             ;HUNDREDS
+    MOV  SER_REG, TENS
+    call serial_out             ;TENS
+    MOV  SER_REG, UNITS
+    call serial_out             ;UNITS
+
+
+
+	 ldi  SER_REG, $80			
+    call serial_out             ;position 0,0
+
+    ldi  DELAYH, 20    ; ~130mS delay
+    call L_DELAY       ; wait for LCD to startup
+
+here:
+   rjmp START   ;
+
+;----------------sends byte to port  on bit at a time --------------------
+; emulates rs232 serial output
+; assumes we're connected to PB7
+;serial_out:
+
+serial_out:
+   clr SER_REG1
+   CLR	TEMP
+   out PORTC,	TEMP  ; start bit
+   call B_DELAY
+
+   ror SER_REG      ; rotate B0 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1  ; output B0
+   call B_DELAY
+   ror SER_REG      ; rotate B1 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1   ;output B1
+   call B_DELAY
+   ror SER_REG      ; rotate B2 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1  ;output B2
+   call B_DELAY
+   ror SER_REG      ; rotate B3 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1   ;output B3
+   call B_DELAY
+   ror SER_REG      ; rotate B4 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1    ;output B4
+   call B_DELAY
+   ror SER_REG      ; rotate B5 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1    ;output B5
+   call B_DELAY
+   ror SER_REG      ; rotate B6 into carry
+   ror SER_REG1      ; rotate carry into B7
+   out PORTC, SER_REG1   ;B6
+   call B_DELAY
+   ror SER_REG        ; rotate B7 into carry
+   ror SER_REG1       ; rotate carry into B7
+   out PORTC, SER_REG1    ;output B7
+   call B_DELAY
+;  out PORTB, zero    ; send zero as the parity bit
+ ;  call B_DELAY
+   out	PORTC, one
+   call B_DELAY
+   call B_DELAY      ; two stop bits
+   ret
+
+;--------------- Baud-rate DELAY ------------------------------------------
+;
+; PURPOSE: 8 bit counter for very short delays.
+;
+; DETAILS:  total delay = 6+ 3x(Delay-1) x 83.3uS @ 12 MHz
+;  Enters with delay value in DELAYL
+; e.g 207 -> 5.2uS ->  19,230 baud
+B_DELAY:
+; 	ret                        ; uncomment this line for simulation to
+   LDI   DELAYL, B192
+BD_0:
+   dec   DELAYL              ; Start at 0xFF
+   brne  BD_0                 ; inner loop 3 cycles =
+   LDI   DELAYL, B192
+BD_1:
+   dec   DELAYL              ; Start at 0xFF
+   brne  BD_1                 ; inner loop 3 cycles =
+   ret                       ; 4 cycles
+;--------------- Short DELAY ------------------------------------------
+;
+; PURPOSE: 8 bit counter for very short delays.
+;
+; DETAILS:  total delay = 6+ 3x(Delay-1) x 83.3uS @ 12 MHz
+;  Enters with delay value in DELAYL
+; e.g 207 -> 5.2uS ->  19,230 baud
+S_DELAY:
+; ret                        ; uncomment this line for simulation to
+SSD_0:
+   dec   DELAYL              ; Start at 0xFF
+   brne  SSD_0                 ; inner loop 3 cycles =
+   ret                       ; 4 cycles
+
+;--------------- Long DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about 256 * 256 * 3 cycles / clock MHz.
+;           very approx 16.4 ms @ 12 MHz
+;
+L_DELAY:
+ ret                        ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 260ms delay.
+   clr   DELAYM
+   clr   DELAYL
+DD_0:
+   dec   DELAYL              ; Start at 0xFF
+   brne  DD_0                 ; inner loop 3 cycles.
+   dec   DELAYM              ;
+   brne  DD_0                 ; middle loop
+   dec   DELAYH
+   brne  DD_0                 ;outer loop.
+
+   ret
+
+;--------------- Long DELAY ------------------------------------------
+;
+; PURPOSE: 24 bit counter for long delays.
+;
+; DETAILS:  L and M loops about 256 * 256 * 3 cycles / clock MHz.
+;           very approx 16.4 ms @ 12 MHz
+;
+;
+DELAY_96:
+; ret                        ; uncomment this line for simulation to
+                             ; eliminate very long delays.  Comment out
+                             ; to run on real hardware to get 260ms delay.
+   clr   DELAYL
+   ldi   DELAYH, 5           ;about 9600 baud
+D_96:
+   dec   DELAYL              ; Start at 0xFF
+   brne  D_96                 ; inner loop 3 cycles.
+   dec   DELAYH
+   brne  DD_0                 ;outer loop.
+
+   ret
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+GETSP:
+	SBI	ADCSR,	ADSC
+KPolling:	
+	SBIS	ADCSR,	ADIF
+	rjmp	KPolling
+	SBI	ADCSR,	ADIF
+	IN 	UNITS,	ADCH
+	CLR   ONE
+	INC	ONE
+	CLR	TENS
+	CLR	HUNDREDS
+	RJMP	LHUND
+GETVAL:
+	MOV	ZERO, VAL
+	MOV	UNITS,VAL
+	CLR   ONE
+	INC	ONE
+	CLR	TENS
+	CLR	HUNDREDS
+	RJMP	LHUND
+GETER:
+	MOV	UNITS, ZERO
+	CLR	ZERO
+ 	IN		VAL, ADCH
+ 	CP	   UNITS, VAL
+	BRLO	NEG
+ 	SUB	UNITS,VAL
+ 	CLR	VAL
+ 	DEC	VAL
+ 	CLR	TEMP
+	ldi	 ZH, high(PLEDTBL<<1)    ; set the base pointer to the table
+   ldi	 ZL, low(PLEDTBL<<1)
+ 	RCALL POSLED
+ 	LDI	TEMP, 0X2B
+ 	MOV  	SER_REG, TEMP
+   call 	serial_out             ;SIGN
+	LDI	TEMP, 0X03
+   MOV	R1,TEMP
+   OR		R1,VAL;OUT	portd,	TEMP
+   OR		R0, VAL
+	RCALL	PHI1
+	 CLR	R0
+	RJMP	POS
+NEG:
+	SUB	VAL,UNITS
+	MOV	UNITS, VAL
+   CLR	VAL
+ 	DEC	VAL
+ 	CLR	TEMP
+	ldi	 ZH, high(NLEDTBL<<1)    ; set the base pointer to the table
+   ldi	 ZL, low(NLEDTBL<<1)
+ 	RCALL NEGLED
+	LDI	TEMP, 0X2D
+ 	MOV  	SER_REG, TEMP
+   call 	serial_out             ;SIGN
+	LDI	TEMP, 0X01
+   MOV	R1,TEMP
+   OR		R1,VAL
+   OR		R0, VAL
+   ;OUT	portd,	TEMP
+	OUT	DDRD,	TEMP
+   RCALL	NHI1
+   CLR	R0
+POS:
+ 	CLR   ONE
+	INC	ONE
+	CLR	TENS
+	CLR	HUNDREDS
+ 	RJMP	LHUND
+LHUND:	
+	CPI	UNITS,100
+	BRLO	LTEN
+	SUBI	UNITS,100
+	ADD	HUNDREDS, ONE
+	RJMP	LHUND
+LTEN:
+	CPI	UNITS,10
+	BRLO	LUNIT
+	SUBI	UNITS, 10
+	ADD	TENS, ONE
+	RJMP	LTEN
+LUNIT:
+	clr   ONE
+   dec 	ONE				;init to $FF
+   clr	 TEMP
+scanHun:					; R0=0 increment ZH if carry out of ZL
+  	LDI	 temp, 0X30
+  	ADD	 HUNDREDS, temp
+scanTen:
+  	LDI	 temp, 0X30
+  	ADD	 TENS, temp	   			; now pick up the table entry
+scanUnit:
+  	LDI	 temp, 0X30
+  	ADD	 UNITS, temp
+	RET	
+
+
+PHI0:
+	CLR	R1
+	DEC	R1
+	CLR	TEMP
+	RET
+PHI1:
+	CLR	TEMP
+	ldi	 ZH, high(DutyTBL<<1)    ; set the base pointer to the table
+   ldi	 ZL, low(DutyTBL<<1)
+   CLR	VAL
+   dec 	val
+	RCALL	scanDuty
+	MOV	R18,	VAL
+	CLR	TEMP
+	dec	temp
+PHI2:
+	INC	TEMP
+	OUT	PORTB, R1
+	CP		TEMP, R18
+	BREQ	PHI31
+	RJMP	PHI2
+PHI31:
+	CLR	TEMP
+PHI3:
+	INC	TEMP
+	OUT	PORTB, R1
+	CP		TEMP, R18
+	BREQ	PHI41
+	RJMP	PHI3
+PHI41:
+	CLR	TEMP
+PHI4:
+	INC	TEMP
+	OUT	PORTB, R1
+	CP		TEMP, R18
+	BREQ	PLO1
+	RJMP	PHI4
+PLO1:	
+	CLR	TEMP
+	LDI	R19, 100
+	SUB	R19, R18	
+PLO2:	
+	CP		TEMP, R19
+	BREQ	PHI0
+	OUT	PORTB, R0
+	INC	TEMP
+	RJMP	PLO2
+;PLO31:
+;	CLR	TEMP
+;PLO3:	
+;	CP		TEMP, R19
+;	BREQ	PLO41
+;	OUT	PORTB, R0
+;	INC	TEMP
+;	RJMP	PLO3
+;PLO41:
+;	CLR	TEMP
+;PLO4:	
+;	CP		TEMP, R19
+;	BREQ	PHI0
+;	OUT	PORTB, R0
+;	INC	TEMP
+;	RJMP	PLO4			
+scanDUTY:
+  	lpm	 temp, Z+
+  	INC	 VAL	   			; now pick up the table entry
+	cp     VAL, UNITS
+	brne	 scanDUTY
+	mov	 VAL, temp
+	RET
+	
+POSLED:
+	
+  	lpm	 temp, Z+
+  	INC	 VAL	   			; now pick up the table entry
+	cp     VAL, UNITS
+	brne	 POSLED
+	mov	 VAL, temp
+	RET
+
+	
+NEGLED:
+	
+  	lpm	 temp, Z+
+  	INC	 VAL	   			; now pick up the table entry
+	cp     VAL, UNITS
+	brne	 NEGLED
+	mov	 VAL, temp
+	RET
+
+
+NHI0:
+	CLR	TEMP
+	RET
+NHI1:
+	CLR	TEMP
+	ldi	 ZH, high(DutyTBL<<1)    ; set the base pointer to the table
+   ldi	 ZL, low(DutyTBL<<1)
+   CLR	VAL
+   dec val
+	RCALL	scanDuty
+	MOV	R18,	VAL
+	CLR	TEMP
+	dec	temp
+NHI2:
+	INC	TEMP
+	OUT	PORTB, R1
+	CP		TEMP, R18
+	BREQ	NHI31
+	RJMP	NHI2
+NHI31:
+	CLR	TEMP
+NHI3:
+	INC	TEMP
+	OUT	PORTB, R1
+	CP		TEMP, R18
+	BREQ	NHI41
+	RJMP	NHI3
+NHI41:
+	CLR	TEMP
+NHI4:
+	INC	TEMP
+	OUT	PORTB, R1
+	CP		TEMP, R18
+	BREQ	NLO1
+	RJMP	NHI4
+NLO1:	
+	CLR	TEMP
+	LDI	R19, 100
+	SUB	R19, R18	
+NLO2:	
+	CP		TEMP, R19
+	BREQ	NHI0
+	OUT	PORTB, R0
+	INC	TEMP
+	RJMP	NLO2
+;NLO31:
+;	CLR	TEMP
+;NLO3:	
+;	CP		TEMP, R19
+;	BREQ	NLO41
+;	OUT	PORTB, R0
+;	INC	TEMP
+;	RJMP	NLO3
+;NLO41:
+;	CLR	TEMP
+;NLO4:	
+;	CP		TEMP, R19
+;	BREQ	NHI0
+;	OUT	PORTB, R0
+;	INC	TEMP
+;	RJMP	NLO4			
+
+DutyTbl:;1	2		3		4		5		6		7		8
+.DB	0,	0,	0,	0,	0,	0,	0,	0,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	99,	99,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	99,	99,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	99,	99,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+.DB	100,	100,	100,	100,	100,	100,	100,	100,
+
+PLEDTBL:
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	248,	248,	248,	248,	248,	248,	248,	248,
+.DB	240,	240,	240,	240,	240,	240,	240,	240,
+.DB	240,	240,	240,	240,	240,	240,	240,	240,
+.DB	240,	240,	240,	240,	240,	240,	240,	240,
+.DB	240,	240,	240,	240,	240,	240,	240,	240,
+.DB	240,	240,	240,	240,	240,	240,	240,	240,
+.DB	224,	224,	224,	224,	224,	224,	224,	224,
+.DB	224,	224,	224,	224,	224,	224,	224,	224,
+.DB	224,	224,	224,	224,	224,	224,	224,	224,
+.DB	224,	224,	224,	224,	224,	224,	224,	224,
+.DB	224,	224,	224,	224,	224,	224,	224,	224,
+.DB	224,	224,	224,	224,	224,	224,	224,	224,
+.DB	192,	192,	192,	192,	192,	192,	192,	192,
+.DB	192,	192,	192,	192,	192,	192,	192,	192,
+.DB	192,	192,	192,	192,	192,	192,	192,	192,
+.DB	192,	192,	192,	192,	192,	192,	192,	192,
+.DB	192,	192,	192,	192,	192,	192,	192,	192,
+.DB	128,	128,	128,	128,	128,	128,	128,	128,
+.DB	128,	128,	128,	128,	128,	128,	128,	128,
+.DB	128,	128,	128,	128,	128,	128,	128,	128,
+.DB	128,	128,	128,	128,	128,	128,	128,	128,
+.DB	128,	128,	128,	128,	128,	128,	128,	128,
+NLEDTBL:
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	252,	252,	252,	252,	252,	252,	252,	252,
+.DB	124,	124,	124,	124,	124,	124,	124,	124,
+.DB	124,	124,	124,	124,	124,	124,	124,	124,
+.DB	124,	124,	124,	124,	124,	124,	124,	124,
+.DB	124,	124,	124,	124,	124,	124,	124,	124,
+.DB	60,	60,	60,	60,	60,	60,	60,	60,
+.DB	60,	60,	60,	60,	60,	60,	60,	60,
+.DB	60,	60,	60,	60,	60,	60,	60,	60,
+.DB	60,	60,	60,	60,	60,	60,	60,	60,
+.DB	60,	60,	60,	60,	60,	60,	60,	60,
+.DB	60,	60,	60,	60,	60,	60,	60,	60,
+.DB	28,	28,	28,	28,	28,	28,	28,	28,
+.DB	28,	28,	28,	28,	28,	28,	28,	28,
+.DB	28,	28,	28,	28,	28,	28,	28,	28,
+.DB	28,	28,	28,	28,	28,	28,	28,	28,
+.DB	28,	28,	28,	28,	28,	28,	28,	28,
+.DB	12,	12,	12,	12,	12,	12,	12,	12,
+.DB	12,	12,	12,	12,	12,	12,	12,	12,
+.DB	12,	12,	12,	12,	12,	12,	12,	12,
+.DB	12,	12,	12,	12,	12,	12,	12,	12,
+.DB	12,	12,	12,	12,	12,	12,	12,	12,
+.DB	4,	4,	4,	4,	4,	4,	4,	4,
+.DB	4,	4,	4,	4,	4,	4,	4,	4,
+.DB	4,	4,	4,	4,	4,	4,	4,	4,
+.DB	4,	4,	4,	4,	4,	4,	4,	4,
+.DB	4,	4,	4,	4,	4,	4,	4,	4,
+.EXIT
